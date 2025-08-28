@@ -1,0 +1,36 @@
+{
+  "contacts": [
+    {
+      "id": "ebbb4eb6-5152-4d5c-96e2-817ffdd0f52d",
+      "nome": "João Silva",
+      "endereco": {
+        "rua": "Av. Brasil",
+        "cidade": "Rio de Janeiro",
+        "uf": "RJ"
+      },
+      "email": "joao@example.com",
+      "telefones": [
+        "21999998888"
+      ],
+      "createdAt": "2025-08-28T00:34:10.158Z",
+      "updatedAt": "2025-08-28T00:34:10.158Z",
+      "deletedAt": null
+    },
+    {
+      "id": "bed1de8b-b07e-4c8c-83fa-402e6779d6ef",
+      "nome": "Leticia Barbosa",
+      "endereco": {
+        "rua": "Menezes Vieira",
+        "cidade": "Rio de Janeiro",
+        "uf": "RJ"
+      },
+      "email": "leticiab.teixeira@gmail.com",
+      "telefones": [
+        "21999999999"
+      ],
+      "createdAt": "2025-08-28T23:19:18.425Z",
+      "updatedAt": "2025-08-28T23:19:18.425Z",
+      "deletedAt": null
+    }
+  ]
+}
