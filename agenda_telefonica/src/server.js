@@ -3,9 +3,14 @@ const express = require('express');
 const morgan = require('morgan');
 const cors = require('cors');
 
+// Swagger (direto)
+const swaggerUi = require('swagger-ui-express');
+const { openapiSpec } = require('./swagger');
+
+// Rotas e middlewares
 const contactsRouter = require('./contacts.routes');
 
-// Middleware de erro (se não existir ainda, cria um fallback simples)
+// Middleware de erro (se não existir ainda, usa fallback simples)
 let errorHandler;
 try {
   ({ errorHandler } = require('./middlewares/error'));
@@ -22,24 +27,13 @@ try {
   };
 }
 
-// Swagger opcional (não quebra se não estiver instalado/gerado)
-let swaggerUi, openapiSpec;
-try {
-  swaggerUi = require('swagger-ui-express');
-  ({ openapiSpec } = require('./swagger'));
-} catch (e) {
-  console.warn('Swagger não carregado (ok em dev):', e.message);
-}
-
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
 
-// Habilita /docs somente se Swagger carregou
-if (swaggerUi && openapiSpec) {
-  app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec));
-}
+// Swagger UI em /docs
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec));
 
 // Rotas da aplicação
 app.use('/contacts', contactsRouter);
@@ -63,9 +57,7 @@ const PORT = process.env.PORT || 3000;
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
     console.log(`API rodando em http://localhost:${PORT}`);
-    if (swaggerUi && openapiSpec) {
-      console.log(`Docs: http://localhost:${PORT}/docs`);
-    }
+    console.log(`Docs: http://localhost:${PORT}/docs`);
   });
 }
 
