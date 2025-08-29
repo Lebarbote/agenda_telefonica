@@ -6,7 +6,7 @@ Inclui CRUD completo, validações, integração com a API HG Weather para traze
 > ⚠️ Observação: o código está dentro da pasta `agenda-telefonica/`.
 
 
-## 🚀 Como rodar o projeto
+## Como rodar o projeto
 1. Clone o repositório
   <pre><code> npm install </code></pre>
 
@@ -19,7 +19,9 @@ HG_WEATHER_KEY=sua_chave_aqui </code></pre>
 
 4. Acesse:
 API rodando em: http://localhost:3000
+
 Documentação Swagger: http://localhost:3000/docs
+
 Healthcheck: http://localhost:3000/health
 
 
