@@ -1,0 +1,41 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+      MONGO_INITDB_DATABASE: agenda
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./agenda_telefonica
+      dockerfile: Dockerfile
+    container_name: api
+    restart: unless-stopped
+    env_file:
+      - ./agenda_telefonica/.env
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    # hot reload, 35 to 38:
+    volumes:
+      - ./agenda_telefonica:/app
+      - /app/node_modules 
+    command: ["npm", "run", "dev"]
+volumes:
+  mongo_data:
+  mongo_config:
