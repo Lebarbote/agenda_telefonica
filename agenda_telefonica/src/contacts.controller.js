@@ -4,6 +4,8 @@ const { contactSchema } = require('./utils/validation');
 const { normalizePhone } = require('./utils/normalizePhone');
 const { buildSuggestion } = require('./utils/suggestion');
 const { getWeatherByCity } = require('./services/weather.service');
+const { getWeatherCached } = require('./services/weather.cache');
+
 
 // Remover duplicados com normalização por contato
 function ensureUniquePhones(telefones) {
@@ -101,7 +103,35 @@ async function listContacts(req, res, next) {
       list = list.filter(c => c.telefones.some(t => t.includes(q)));
     }
 
-    return res.json(list.map(basicContactView));
+    // Enriquecer cada contato com clima + sugestão
+    const enriched = await Promise.all(list.map(async (c) => {
+      const base = basicContactView(c);
+
+      let clima = null;
+      let sugestao = null;
+
+      const cidade = c.endereco?.cidade;
+      if (cidade && cidade.trim()) {
+        const resp = await getWeatherCached({ cidade, uf: c.endereco.uf });
+        if (resp.ok) {
+          clima = {
+            cidade: resp.city_name || cidade,
+            temperatura_c: resp.temp,
+            condicao_slug: resp.condition_slug,
+            descricao: resp.description
+          };
+          sugestao = buildSuggestion(resp.temp, resp.condition_slug, resp.description);
+        } else {
+          sugestao = 'Não foi possível obter o clima agora.';
+        }
+      } else {
+        sugestao = 'Endereço sem cidade definida para consultar o clima.';
+      }
+
+      return { ...base, clima, sugestao };
+    }));
+
+    return res.json(enriched);
   } catch (err) {
     return next(err);
   }
@@ -127,7 +157,7 @@ async function getContact(req, res, next) {
 
     const hasCity = cidade && cidade.trim().length > 0;
     if (hasCity) {
-      const resp = await getWeatherByCity({ cidade, uf: contact.endereco.uf });
+      const resp = await getWeatherCached({ cidade, uf: contact.endereco.uf });
       if (resp.ok) {
         clima = {
           cidade: resp.city_name || cidade,
