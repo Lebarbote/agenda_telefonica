@@ -1,6 +1,7 @@
 services:
   mongo:
     image: mongo:7
+    command: ["--quiet"]
     container_name: mongo
     restart: unless-stopped
     environment:
@@ -14,9 +15,10 @@ services:
       - mongo_config:/data/configdb
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
-      interval: 10s
+      interval: 120s
       timeout: 5s
       retries: 5
+      start_period: 20s 
 
   api:
     build:
