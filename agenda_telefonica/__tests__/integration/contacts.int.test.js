@@ -1,6 +1,13 @@
 const fs = require('fs');
 const path = require('path');
 
+const Contact = require('../../src/models/contact.model');
+
+beforeEach(async () => {
+  await Contact.deleteMany({});
+});
+
+
 // Aponta DB para um arquivo de teste antes de carregar o app
 process.env.NODE_ENV = 'test';
 const TEST_DB = path.join(__dirname, 'db.test.json');
