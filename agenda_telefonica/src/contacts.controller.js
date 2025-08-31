@@ -1,13 +1,10 @@
-const { readDB, writeDB } = require('./db');
-const { v4: uuidv4 } = require('uuid');
+const Contact = require('./models/contact.model');
 const { contactSchema } = require('./utils/validation');
 const { normalizePhone } = require('./utils/normalizePhone');
 const { buildSuggestion } = require('./utils/suggestion');
-const { getWeatherByCity } = require('./services/weather.service');
 const { getWeatherCached } = require('./services/weather.cache');
 
-
-// Remover duplicados com normalização por contato
+// Remove duplicados com normalização por contato
 function ensureUniquePhones(telefones) {
   const seen = new Set();
   const normalized = telefones.map(t => normalizePhone(t));
@@ -18,15 +15,15 @@ function ensureUniquePhones(telefones) {
   return { ok: true, normalized };
 }
 
-function basicContactView(c) {
+function basicContactView(doc) {
   return {
-    id: c.id,
-    nome: c.nome,
-    endereco: c.endereco,
-    email: c.email,
-    telefones: c.telefones,
-    createdAt: c.createdAt,
-    updatedAt: c.updatedAt
+    id: String(doc._id),
+    nome: doc.nome,
+    endereco: doc.endereco,
+    email: doc.email,
+    telefones: doc.telefones,
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt
   };
 }
 
@@ -51,10 +48,7 @@ async function createContact(req, res, next) {
       });
     }
 
-    const db = await readDB();
-    const now = new Date().toISOString();
-    const contact = {
-      id: uuidv4(),
+    const doc = await Contact.create({
       nome: value.nome.trim(),
       endereco: {
         rua: value.endereco.rua || '',
@@ -62,16 +56,27 @@ async function createContact(req, res, next) {
         uf: (value.endereco.uf || '').toUpperCase()
       },
       email: value.email.toLowerCase(),
-      telefones: normalized,
-      createdAt: now,
-      updatedAt: now,
-      deletedAt: null
-    };
+      telefones: normalized
+    });
 
-    db.contacts.push(contact);
-    await writeDB(db);
-    return res.status(201).json(basicContactView(contact));
+    return res.status(201).json(basicContactView(doc));
   } catch (err) {
+    // 11000 = unique index (email)
+    if (err && err.code === 11000) {
+      return next({
+        status: 409,
+        code: 'UNIQUE_VIOLATION',
+        message: 'Email já existente.'
+      });
+    }
+    // validação do schema (ex: telefones duplicados)
+    if (err && err.errors && err.errors['telefones']) {
+      return next({
+        status: 400,
+        code: 'PHONE_DUPLICATE',
+        message: err.errors['telefones'].message
+      });
+    }
     return next(err);
   }
 }
@@ -79,32 +84,36 @@ async function createContact(req, res, next) {
 async function listContacts(req, res, next) {
   try {
     const { nome, endereco, email, telefone } = req.query;
-    const db = await readDB();
 
-    let list = db.contacts.filter(c => !c.deletedAt);
+    const and = [{ deletedAt: null }];
 
     if (nome) {
-      const q = String(nome).toLowerCase();
-      list = list.filter(c => c.nome.toLowerCase().includes(q));
+      and.push({ nome: { $regex: String(nome), $options: 'i' } });
     }
     if (email) {
-      const q = String(email).toLowerCase();
-      list = list.filter(c => c.email.includes(q));
+      and.push({ email: { $regex: String(email), $options: 'i' } });
     }
     if (endereco) {
-      const q = String(endereco).toLowerCase();
-      list = list.filter(c => {
-        const blob = `${c.endereco.rua} ${c.endereco.cidade} ${c.endereco.uf}`.toLowerCase();
-        return blob.includes(q);
+      const q = String(endereco);
+      and.push({
+        $or: [
+          { 'endereco.rua': { $regex: q, $options: 'i' } },
+          { 'endereco.cidade': { $regex: q, $options: 'i' } },
+          { 'endereco.uf': { $regex: q, $options: 'i' } }
+        ]
       });
     }
     if (telefone) {
       const q = normalizePhone(String(telefone));
-      list = list.filter(c => c.telefones.some(t => t.includes(q)));
+      and.push({ telefones: { $elemMatch: { $regex: q } } });
     }
 
-    // Enriquecer cada contato com clima + sugestão
-    const enriched = await Promise.all(list.map(async (c) => {
+    const filter = and.length ? { $and: and } : { deletedAt: null };
+
+    const docs = await Contact.find(filter).sort({ _id: 1 }).lean();
+
+    // Enriquecer clima + sugestão
+    const enriched = await Promise.all(docs.map(async (c) => {
       const base = basicContactView(c);
 
       let clima = null;
@@ -140,9 +149,8 @@ async function listContacts(req, res, next) {
 async function getContact(req, res, next) {
   try {
     const { id } = req.params;
-    const db = await readDB();
-    const contact = db.contacts.find(c => c.id === id && !c.deletedAt);
-    if (!contact) {
+    const doc = await Contact.findOne({ _id: id, deletedAt: null }).lean();
+    if (!doc) {
       return next({
         status: 404,
         code: 'NOT_FOUND',
@@ -151,13 +159,12 @@ async function getContact(req, res, next) {
     }
 
     // Clima + sugestão
-    const cidade = contact.endereco.cidade;
+    const cidade = doc.endereco?.cidade;
     let clima = null;
     let sugestao = null;
 
-    const hasCity = cidade && cidade.trim().length > 0;
-    if (hasCity) {
-      const resp = await getWeatherCached({ cidade, uf: contact.endereco.uf });
+    if (cidade && cidade.trim()) {
+      const resp = await getWeatherCached({ cidade, uf: doc.endereco.uf });
       if (resp.ok) {
         clima = {
           cidade: resp.city_name || cidade,
@@ -173,11 +180,7 @@ async function getContact(req, res, next) {
       sugestao = 'Endereço sem cidade definida para consultar o clima.';
     }
 
-    return res.json({
-      ...basicContactView(contact),
-      clima,
-      sugestao
-    });
+    return res.json({ ...basicContactView(doc), clima, sugestao });
   } catch (err) {
     return next(err);
   }
@@ -186,6 +189,7 @@ async function getContact(req, res, next) {
 async function updateContact(req, res, next) {
   try {
     const { id } = req.params;
+
     const { error, value } = contactSchema.validate(req.body, { abortEarly: false });
     if (error) {
       return next({
@@ -193,16 +197,6 @@ async function updateContact(req, res, next) {
         code: 'VALIDATION_ERROR',
         message: 'Validação falhou',
         details: error.details.map(d => d.message)
-      });
-    }
-
-    const db = await readDB();
-    const idx = db.contacts.findIndex(c => c.id === id && !c.deletedAt);
-    if (idx === -1) {
-      return next({
-        status: 404,
-        code: 'NOT_FOUND',
-        message: 'Contato não encontrado'
       });
     }
 
@@ -215,33 +209,8 @@ async function updateContact(req, res, next) {
       });
     }
 
-    const now = new Date().toISOString();
-    db.contacts[idx] = {
-      ...db.contacts[idx],
-      nome: value.nome.trim(),
-      endereco: {
-        rua: value.endereco.rua || '',
-        cidade: value.endereco.cidade.trim(),
-        uf: (value.endereco.uf || '').toUpperCase()
-      },
-      email: value.email.toLowerCase(),
-      telefones: normalized,
-      updatedAt: now
-    };
-
-    await writeDB(db);
-    return res.json(basicContactView(db.contacts[idx]));
-  } catch (err) {
-    return next(err);
-  }
-}
-
-async function deleteContact(req, res, next) {
-  try {
-    const { id } = req.params;
-    const db = await readDB();
-    const contact = db.contacts.find(c => c.id === id && !c.deletedAt);
-    if (!contact) {
+    const doc = await Contact.findOne({ _id: id, deletedAt: null });
+    if (!doc) {
       return next({
         status: 404,
         code: 'NOT_FOUND',
@@ -249,8 +218,51 @@ async function deleteContact(req, res, next) {
       });
     }
 
-    contact.deletedAt = new Date().toISOString();
-    await writeDB(db);
+    doc.nome = value.nome.trim();
+    doc.endereco = {
+      rua: value.endereco.rua || '',
+      cidade: value.endereco.cidade.trim(),
+      uf: (value.endereco.uf || '').toUpperCase()
+    };
+    doc.email = value.email.toLowerCase();
+    doc.telefones = normalized;
+
+    await doc.validate(); // checa duplicados
+    await doc.save();
+
+    return res.json(basicContactView(doc));
+  } catch (err) {
+    if (err && err.code === 11000) {
+      return next({
+        status: 409,
+        code: 'UNIQUE_VIOLATION',
+        message: 'Email já existente.'
+      });
+    }
+    if (err && err.errors && err.errors['telefones']) {
+      return next({
+        status: 400,
+        code: 'PHONE_DUPLICATE',
+        message: err.errors['telefones'].message
+      });
+    }
+    return next(err);
+  }
+}
+
+async function deleteContact(req, res, next) {
+  try {
+    const { id } = req.params;
+    const doc = await Contact.findOne({ _id: id, deletedAt: null });
+    if (!doc) {
+      return next({
+        status: 404,
+        code: 'NOT_FOUND',
+        message: 'Contato não encontrado'
+      });
+    }
+    doc.deletedAt = new Date();
+    await doc.save();
     return res.status(204).send();
   } catch (err) {
     return next(err);

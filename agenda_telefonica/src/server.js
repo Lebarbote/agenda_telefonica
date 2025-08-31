@@ -1,4 +1,5 @@
 require('dotenv').config();
+const { connect } = require('./db/mongo');
 const express = require('express');
 const morgan = require('morgan');
 const cors = require('cors');
@@ -30,7 +31,9 @@ try {
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(morgan('dev'));
+if (process.env.NODE_ENV !== 'test') {
+  app.use(morgan('dev'));
+}
 
 // Swagger UI em /docs
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec));
@@ -55,10 +58,17 @@ const PORT = process.env.PORT || 3000;
 
 // Em testes, exporta o app sem abrir porta
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
-    console.log(`API rodando em http://localhost:${PORT}`);
-    console.log(`Docs: http://localhost:${PORT}/docs`);
-  });
+    async function start() {
+    try {
+      await connect();
+      const port = process.env.PORT || 3000;
+      app.listen(port, () => console.log(`API listening on port ${port}`));
+    } catch (err) {
+      console.error('Failed to start server:', err);
+      process.exit(1);
+    }
+  }
+  start();
 }
 
 module.exports = app;
