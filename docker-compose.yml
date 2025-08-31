@@ -24,7 +24,6 @@ services:
     build:
       context: ./agenda_telefonica
       dockerfile: Dockerfile
-    container_name: api
     restart: unless-stopped
     env_file:
       - ./agenda_telefonica/.env
@@ -33,7 +32,7 @@ services:
         condition: service_healthy
     ports:
       - "3000:3000"
-    # hot reload, 35 to 38:
+    # hot reload, 35 a 38:
     volumes:
       - ./agenda_telefonica:/app
       - /app/node_modules 
