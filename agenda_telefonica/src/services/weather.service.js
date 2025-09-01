@@ -1,32 +1,31 @@
 const axios = require('axios');
 
+const BASE_URL = process.env.HG_BASE_URL || 'https://api.hgbrasil.com/weather';
+const TIMEOUT = Number(process.env.HG_TIMEOUT_MS || 3000);
+const client = axios.create({ baseURL: BASE_URL, timeout: TIMEOUT });
+
 async function getWeatherByCity({ cidade, uf }) {
-  const baseURL = 'https://api.hgbrasil.com/weather';
-  const params = {
-    format: 'json',
-    locale: 'pt'
-  };
-  if (process.env.HG_WEATHER_KEY) params.key = process.env.HG_WEATHER_KEY;
-
-  params.city_name = uf ? `${cidade},${uf}` : cidade;
-
-  try {
-    const { data } = await axios.get(baseURL, { params, timeout: 5000 });
-    const r = data && data.results;
-    if (!r) throw new Error('Sem results');
-    return {
-      ok: true,
-      temp: r.temp,
-      description: r.description,
-      condition_slug: r.condition_slug,
-      city_name: r.city_name
-    };
-  } catch (err) {
-    return { ok: false, error: 'Falha ao consultar a API de clima' };
+  const key = process.env.HG_WEATHER_KEY;
+  if (!key) {
+    const e = new Error('HG_WEATHER_KEY ausente');
+    e.code = 'CONFIG_MISSING';
+    throw e;
   }
-}
+  const city_name = `${cidade},${uf}`;
+  const { data } = await client.get('', { params: { key, format: 'json', city_name } });
 
-// Endpoints e campos (results.temp, results.condition_slug, results.description, city_name) conforme documentação HG Weather 
-//(endpoint base GET https://api.hgbrasil.com/weather).
+  const r = data?.results;
+  if (!r || typeof r.temp !== 'number') {
+    const e = new Error('Resposta inválida do provedor de clima');
+    e.code = 'WEATHER_BAD_RESPONSE';
+    throw e;
+  }
+  return {
+    city_name: r.city_name,
+    temp: r.temp,
+    condition_slug: r.condition_slug,
+    description: r.description
+  };
+}
 
 module.exports = { getWeatherByCity };

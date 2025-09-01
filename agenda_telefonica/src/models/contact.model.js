@@ -1,46 +1,41 @@
 const mongoose = require('mongoose');
 
 const ContactSchema = new mongoose.Schema({
-  nome:   { type: String, required: true, trim: true },
-
+  nome: { type: String, required: true, trim: true },
   endereco: {
     rua:    { type: String, trim: true, default: '' },
-    cidade: { type: String, trim: true, default: '' },
-    uf:     { type: String, trim: true, uppercase: true, default: '' }
+    cidade: { type: String, trim: true, required: true },
+    uf:     { type: String, trim: true, uppercase: true, required: true }
   },
+  email: { type: String, trim: true, lowercase: true, index: { unique: true, sparse: true } },
 
-  email: { type: String, trim: true, lowercase: true, unique: true, sparse: true },
-
-  // telefones é array de strings (normalizadas no controller)
   telefones: {
     type: [String],
     validate: {
-      validator: function (arr) {
+      validator(arr) {
         if (!Array.isArray(arr) || arr.length < 1) return false;
-        const norm = arr.map(v => String(v).trim());
-        return new Set(norm).size === norm.length; // impede números repetidos no mesmo contato
+        const norm = arr.map(s => String(s || '').trim());
+        const set = new Set(norm);
+        return norm.every(s => s.length > 0) && set.size === norm.length;
       },
-      message: 'Telefones duplicados não são permitidos para o mesmo contato.'
+      message: 'Phone numbers must be unique per contact and not empty.'
     }
   },
 
   deletedAt: { type: Date, default: null }
 }, { timestamps: true });
 
-// índices úteis
 ContactSchema.index({ nome: 1 });
 ContactSchema.index({ 'endereco.cidade': 1 });
 ContactSchema.index({ telefones: 1 });
 
-// normalização simples
 ContactSchema.pre('validate', function(next) {
   if (Array.isArray(this.telefones)) {
     this.telefones = this.telefones
-      .map(v => String(v).trim())
-      .filter(Boolean);
+      .map(s => String(s || '').trim())
+      .filter(s => s.length > 0);
   }
   next();
 });
 
-const Contact = mongoose.model('Contact', ContactSchema);
-module.exports = Contact;
+module.exports = mongoose.model('Contact', ContactSchema);
